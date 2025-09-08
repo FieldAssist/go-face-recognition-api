@@ -48,17 +48,17 @@ func Load() *Config {
 			IdleTimeout:  getDurationEnv("IDLE_TIMEOUT", 120*time.Second),
 		},
 		Pigo: PigoConfig{
-			MinSize:       getIntEnv("PIGO_MIN_SIZE", 25),
-			MaxSize:       getIntEnv("PIGO_MAX_SIZE", 1000),
-			ShiftFactor:   getFloat32Env("PIGO_SHIFT_FACTOR", 0.2),
-			ScaleFactor:   getFloat32Env("PIGO_SCALE_FACTOR", 1.1),
-			IoUThreshold:  getFloat32Env("PIGO_IOU_THRESHOLD", 0.6),
-			MinConfidence: getFloat32Env("PIGO_MIN_CONFIDENCE", 12.0),
+			MinSize:       getIntEnv("PIGO_MIN_SIZE", 20),
+			MaxSize:       getIntEnv("PIGO_MAX_SIZE", 1200),
+			ShiftFactor:   getFloat32Env("PIGO_SHIFT_FACTOR", 0.1),
+			ScaleFactor:   getFloat32Env("PIGO_SCALE_FACTOR", 1.05),
+			IoUThreshold:  getFloat32Env("PIGO_IOU_THRESHOLD", 0.3),
+			MinConfidence: getFloat32Env("PIGO_MIN_CONFIDENCE", 5.0),
 		},
 		Limits: LimitsConfig{
-			MaxImageSize: getInt64Env("MAX_IMAGE_SIZE", 5242880), // 5MB
-			MaxWidth:     getIntEnv("MAX_WIDTH", 2000),
-			MaxHeight:    getIntEnv("MAX_HEIGHT", 2000),
+			MaxImageSize: getInt64Env("MAX_IMAGE_SIZE", 15728640), // 15MB
+			MaxWidth:     getIntEnv("MAX_WIDTH", 5000),
+			MaxHeight:    getIntEnv("MAX_HEIGHT", 5000),
 		},
 	}
 }

@@ -1,6 +1,6 @@
 module face-recognition-api
 
-go 1.21
+go 1.25
 
 require (
 	github.com/esimov/pigo v1.4.6

@@ -75,9 +75,9 @@ The application can be configured using environment variables:
 | `READ_TIMEOUT` | `30s` | HTTP read timeout |
 | `WRITE_TIMEOUT` | `30s` | HTTP write timeout |
 | `IDLE_TIMEOUT` | `120s` | HTTP idle timeout |
-| `MAX_IMAGE_SIZE` | `5242880` | Max image size (5MB) |
-| `MAX_WIDTH` | `2000` | Max image width |
-| `MAX_HEIGHT` | `2000` | Max image height |
+| `MAX_IMAGE_SIZE` | `15728640` | Max image size (15MB) |
+| `MAX_WIDTH` | `5000` | Max image width |
+| `MAX_HEIGHT` | `5000` | Max image height |
 | `PIGO_MIN_SIZE` | `25` | Minimum face size for detection |
 | `PIGO_MAX_SIZE` | `1000` | Maximum face size for detection |
 | `PIGO_MIN_CONFIDENCE` | `12.0` | Minimum confidence threshold |
