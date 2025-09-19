@@ -1,11 +1,11 @@
 package services
 
 import (
+	_ "embed"
 	"fmt"
 	"image"
-	_ "embed"
 
-	"github.com/esimov/pigo/core"
+	pigo "github.com/esimov/pigo/core"
 	"github.com/sirupsen/logrus"
 
 	"face-recognition-api/internal/config"
@@ -13,6 +13,7 @@ import (
 )
 
 // Embed the cascade file - you'll need to download this from pigo repository
+//
 //go:embed facefinder
 var cascadeFile []byte
 
@@ -27,7 +28,7 @@ type FaceDetector struct {
 func NewFaceDetector(cfg config.PigoConfig, logger *logrus.Logger) (*FaceDetector, error) {
 	// Initialize pigo classifier
 	p := pigo.NewPigo()
-	
+
 	// Parse the cascade file
 	classifier, err := p.Unpack(cascadeFile)
 	if err != nil {
@@ -43,13 +44,24 @@ func NewFaceDetector(cfg config.PigoConfig, logger *logrus.Logger) (*FaceDetecto
 
 // DetectFaces detects faces in the given image and returns face coordinates
 func (fd *FaceDetector) DetectFaces(img image.Image) ([]models.Face, error) {
+	// Security Fix: Add nil pointer validation to prevent panics
+	if img == nil {
+		return nil, fmt.Errorf("image cannot be nil")
+	}
+
+	// Get image dimensions with proper bounds calculation
+	bounds := img.Bounds()
+	width := bounds.Dx()  // Use Dx() instead of Max.X for proper width calculation
+	height := bounds.Dy() // Use Dy() instead of Max.Y for proper height calculation
+
+	// Validate image dimensions
+	if width <= 0 || height <= 0 {
+		return nil, fmt.Errorf("invalid image dimensions: %dx%d", width, height)
+	}
+
 	// Convert image to grayscale using pigo's utility
 	pixels := pigo.RgbToGrayscale(img)
-	
-	// Get image dimensions
-	bounds := img.Bounds()
-	width, height := bounds.Max.X, bounds.Max.Y
-	
+
 	// Set up cascade parameters
 	cParams := pigo.CascadeParams{
 		MinSize:     fd.config.MinSize,
@@ -63,14 +75,14 @@ func (fd *FaceDetector) DetectFaces(img image.Image) ([]models.Face, error) {
 			Dim:    width,
 		},
 	}
-	
+
 	// Run face detection
 	angle := 0.0 // No rotation
 	detections := fd.classifier.RunCascade(cParams, angle)
-	
+
 	// Cluster detections to remove duplicates
 	detections = fd.classifier.ClusterDetections(detections, float64(fd.config.IoUThreshold))
-	
+
 	// Filter detections by confidence threshold
 	var filteredDetections []pigo.Detection
 	for _, det := range detections {
@@ -78,7 +90,7 @@ func (fd *FaceDetector) DetectFaces(img image.Image) ([]models.Face, error) {
 			filteredDetections = append(filteredDetections, det)
 		}
 	}
-	
+
 	// Convert to our Face model
 	faces := make([]models.Face, len(filteredDetections))
 	for i, det := range filteredDetections {
@@ -90,11 +102,9 @@ func (fd *FaceDetector) DetectFaces(img image.Image) ([]models.Face, error) {
 			Confidence: det.Q,
 		}
 	}
-	
+
 	return faces, nil
 }
-
-
 
 // ValidateSelfie validates if the image is a good selfie based on face count and quality
 func (fd *FaceDetector) ValidateSelfie(faces []models.Face, minFaces, maxFaces int) models.SelfieValidationResponse {

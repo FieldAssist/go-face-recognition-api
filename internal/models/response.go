@@ -16,6 +16,13 @@ type ImageMetadata struct {
 	Format    string `json:"format"`
 	SizeBytes int64  `json:"size_bytes"`
 	URL       string `json:"url"`
+	// Optimization details (optional)
+	Optimized         bool  `json:"optimized,omitempty"`
+	Resized           bool  `json:"resized,omitempty"`
+	OriginalWidth     int   `json:"original_width,omitempty"`
+	OriginalHeight    int   `json:"original_height,omitempty"`
+	OriginalSizeBytes int64 `json:"original_size_bytes,omitempty"`
+	JpegQualityUsed   int   `json:"jpeg_quality_used,omitempty"`
 }
 
 // FaceDetectionResponse represents the response for face detection endpoint

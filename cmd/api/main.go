@@ -8,13 +8,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 	"face-recognition-api/internal/config"
 	"face-recognition-api/internal/handlers"
 	"face-recognition-api/internal/middleware"
 	"face-recognition-api/internal/services"
+	"face-recognition-api/internal/validation"
+
+	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -22,6 +24,9 @@ func main() {
 	logger := logrus.New()
 	logger.SetFormatter(&logrus.JSONFormatter{})
 	logger.SetLevel(logrus.InfoLevel)
+
+	// Initialize validation
+	validation.Init()
 
 	// Load configuration
 	cfg := config.Load()
@@ -39,7 +44,8 @@ func main() {
 		logger.WithError(err).Fatal("Failed to initialize face detector")
 	}
 
-	imageDownloader := services.NewImageDownloader(cfg.Limits, logger)
+	optimizer := services.NewImageOptimizer(cfg.Optimizer, logger)
+	imageDownloader := services.NewImageDownloader(cfg.Limits, optimizer, logger)
 	imageProcessor := services.NewImageProcessor(logger)
 
 	// Initialize handlers
@@ -52,15 +58,18 @@ func main() {
 	// Apply global middleware
 	router.Use(middleware.LoggingMiddleware(logger))
 	router.Use(middleware.RecoveryMiddleware(logger))
+	// Security Fix: Add request size limit to prevent DoS attacks
+	// Use MaxImageSize from config as the request size limit (typically 15MB)
+	router.Use(middleware.RequestSizeLimit(int64(cfg.Limits.MaxImageSize), logger))
 
 	// API routes
 	api := router.PathPrefix("/api/v1").Subrouter()
-	
+
 	// Face detection endpoints
 	api.HandleFunc("/detect", faceHandler.DetectHandler).Methods("POST")
 	api.HandleFunc("/validate", faceHandler.ValidateHandler).Methods("POST")
 	api.HandleFunc("/detect-visual", faceHandler.DetectVisualHandler).Methods("POST")
-	
+
 	// Health check endpoints
 	api.HandleFunc("/health", healthHandler.HealthHandler).Methods("GET")
 	api.HandleFunc("/ready", healthHandler.ReadinessHandler).Methods("GET")

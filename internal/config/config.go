@@ -8,9 +8,10 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	Server ServerConfig
-	Pigo   PigoConfig
-	Limits LimitsConfig
+	Server    ServerConfig
+	Pigo      PigoConfig
+	Limits    LimitsConfig
+	Optimizer OptimizerConfig
 }
 
 // ServerConfig holds server-related configuration
@@ -38,6 +39,14 @@ type LimitsConfig struct {
 	MaxHeight    int
 }
 
+// OptimizerConfig holds image optimization settings
+type OptimizerConfig struct {
+	MaxSide        int   // Longest image side in pixels before detection
+	TargetMaxBytes int64 // Target maximum encoded size in bytes (approximate)
+	JPEGMinQuality int   // Minimum JPEG quality used during adaptive compression
+	JPEGMaxQuality int   // Maximum JPEG quality used during adaptive compression
+}
+
 // Load loads configuration from environment variables with defaults
 func Load() *Config {
 	return &Config{
@@ -49,16 +58,22 @@ func Load() *Config {
 		},
 		Pigo: PigoConfig{
 			MinSize:       getIntEnv("PIGO_MIN_SIZE", 20),
-			MaxSize:       getIntEnv("PIGO_MAX_SIZE", 1200),
+			MaxSize:       getIntEnv("PIGO_MAX_SIZE", 1000),
 			ShiftFactor:   getFloat32Env("PIGO_SHIFT_FACTOR", 0.1),
-			ScaleFactor:   getFloat32Env("PIGO_SCALE_FACTOR", 1.05),
-			IoUThreshold:  getFloat32Env("PIGO_IOU_THRESHOLD", 0.3),
+			ScaleFactor:   getFloat32Env("PIGO_SCALE_FACTOR", 1.1),
+			IoUThreshold:  getFloat32Env("PIGO_IOU_THRESHOLD", 0.2),
 			MinConfidence: getFloat32Env("PIGO_MIN_CONFIDENCE", 5.0),
 		},
 		Limits: LimitsConfig{
 			MaxImageSize: getInt64Env("MAX_IMAGE_SIZE", 15728640), // 15MB
 			MaxWidth:     getIntEnv("MAX_WIDTH", 5000),
 			MaxHeight:    getIntEnv("MAX_HEIGHT", 5000),
+		},
+		Optimizer: OptimizerConfig{
+			MaxSide:        getIntEnv("OPT_MAX_SIDE", 1024),
+			TargetMaxBytes: getInt64Env("OPT_TARGET_MAX_BYTES", 1000000),
+			JPEGMinQuality: getIntEnv("OPT_JPEG_MIN_QUALITY", 60),
+			JPEGMaxQuality: getIntEnv("OPT_JPEG_MAX_QUALITY", 90),
 		},
 	}
 }

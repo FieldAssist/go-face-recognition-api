@@ -12,6 +12,36 @@ A Go face recognition API using the `pigo` library for face detection. This inte
 - **Graceful Shutdown**: Proper context-based shutdown handling
 - **Structured Logging**: JSON-formatted logs with logrus
 
+## Image Optimization (New)
+
+To improve detection performance on large images, the API now performs intelligent preprocessing before running Pigo:
+
+- Automatic resize to an optimal working size (default: longest side 1024 px), preserving aspect ratio
+- Adaptive JPEG compression to a target size (default: ~1 MB) using the highest quality that fits
+- Alpha images are flattened to opaque white before JPEG encoding
+
+Benefits:
+- Faster face detection on large inputs while maintaining detection quality
+- Reduced memory and CPU usage
+- Consistent throughput under variable traffic
+
+Configuration (environment variables):
+- OPT_MAX_SIDE (default 1024): Longest image side cap in pixels before detection
+- OPT_TARGET_MAX_BYTES (default 1000000): Target encoded size (bytes) for adaptive compression
+- OPT_JPEG_MIN_QUALITY (default 60): Minimum JPEG quality allowed when compressing
+- OPT_JPEG_MAX_QUALITY (default 90): Maximum JPEG quality when compressing
+
+Notes:
+- Optimization happens after download and decode, and before face detection
+- If optimization is not needed (small images), the original is used unchanged
+- Metadata in responses indicates when optimization occurred
+
+## Performance Notes
+
+- Resizing large images (e.g., 4000+ px) to ~1024 px typically yields substantial speedups
+- Pigo accuracy is retained as faces are still well above the minimum face window size
+- Compression uses highest-quality setting under the target size to preserve detail around faces
+
 ## API Endpoints
 
 ### Face Detection
@@ -78,10 +108,18 @@ The application can be configured using environment variables:
 | `MAX_IMAGE_SIZE` | `15728640` | Max image size (15MB) |
 | `MAX_WIDTH` | `5000` | Max image width |
 | `MAX_HEIGHT` | `5000` | Max image height |
-| `PIGO_MIN_SIZE` | `25` | Minimum face size for detection |
+| `PIGO_MIN_SIZE` | `20` | Minimum face size for detection |
 | `PIGO_MAX_SIZE` | `1000` | Maximum face size for detection |
-| `PIGO_MIN_CONFIDENCE` | `12.0` | Minimum confidence threshold |
-| `PIGO_IOU_THRESHOLD` | `0.6` | IoU threshold for face clustering |
+| `PIGO_SHIFT_FACTOR` | `0.1` | Shift detection window factor |
+| `PIGO_SCALE_FACTOR` | `1.1` | Scale detection window factor |
+| `PIGO_IOU_THRESHOLD` | `0.2` | IoU threshold for face clustering |
+| `PIGO_MIN_CONFIDENCE` | `5.0` | Minimum confidence threshold |
+| `OPT_MAX_SIDE` | `1024` | Longest image side cap (pixels) before detection |
+| `OPT_TARGET_MAX_BYTES` | `1000000` | Target encoded size (bytes) for compression |
+| `OPT_JPEG_MIN_QUALITY` | `60` | Minimum JPEG quality when compressing |
+| `OPT_JPEG_MAX_QUALITY` | `90` | Maximum JPEG quality when compressing |
+
+Note: Pigo defaults are aligned with upstream recommendations per the library README (MaxSize 1000, ScaleFactor 1.1, ShiftFactor 0.1, IoUThreshold 0.2, MinSize 20).
 
 ## API Examples
 
@@ -108,11 +146,17 @@ curl -X POST http://localhost:8080/api/v1/detect \
   ],
   "count": 1,
   "image_metadata": {
-    "width": 640,
-    "height": 480,
+    "width": 1024,
+    "height": 768,
     "format": "JPEG",
-    "size_bytes": 245760,
-    "url": "https://example.com/image.jpg"
+    "size_bytes": 995000,
+    "url": "https://example.com/image.jpg",
+    "optimized": true,
+    "resized": true,
+    "original_width": 4032,
+    "original_height": 3024,
+    "original_size_bytes": 3876543,
+    "jpeg_quality_used": 85
   },
   "processing_time_ms": 125.5
 }
@@ -211,6 +255,20 @@ The project follows Go best practices:
 - Context usage for cancellation
 - Structured logging
 - Clean architecture patterns
+
+## Dependencies and Credits
+
+This project uses the following open-source libraries. We thank their authors and contributors:
+
+- [esimov/pigo](https://github.com/esimov/pigo) — Pure Go face detection, pupils/eyes localization, facial landmarks
+- [golang.org/x/image/draw](https://pkg.go.dev/golang.org/x/image/draw) — High-quality image resampling (CatmullRom)
+- [gorilla/mux](https://github.com/gorilla/mux) — HTTP request router and dispatcher
+- [sirupsen/logrus](https://github.com/sirupsen/logrus) — Structured logging for Go
+- [go-playground/validator/v10](https://github.com/go-playground/validator) — Struct and field validation
+- [stretchr/testify](https://github.com/stretchr/testify) — Testing toolkit with assertions
+- [prometheus/client_golang](https://github.com/prometheus/client_golang) — Prometheus instrumentation for Go
+
+Additional dependencies may be listed in go.mod and are used under their respective licenses.
 
 ## License
 

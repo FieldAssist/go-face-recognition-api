@@ -5,7 +5,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"image"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -22,19 +24,22 @@ import (
 
 // ImageDownloader handles downloading and validating images from URLs
 type ImageDownloader struct {
-	client *http.Client
-	config config.LimitsConfig
-	logger *logrus.Logger
+	client    *http.Client
+	config    config.LimitsConfig
+	optimizer *ImageOptimizer
+	logger    *logrus.Logger
 }
 
 // NewImageDownloader creates a new image downloader instance
-func NewImageDownloader(cfg config.LimitsConfig, logger *logrus.Logger) *ImageDownloader {
+func NewImageDownloader(cfg config.LimitsConfig, optimizer *ImageOptimizer, logger *logrus.Logger) *ImageDownloader {
 	return &ImageDownloader{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, // Internal service - skip certificate validation
+					// Security Fix: Enable proper TLS certificate validation
+					InsecureSkipVerify: false,
+					MinVersion:         tls.VersionTLS12, // Enforce minimum TLS 1.2
 				},
 				MaxIdleConns:        100,
 				MaxIdleConnsPerHost: 10,
@@ -42,8 +47,9 @@ func NewImageDownloader(cfg config.LimitsConfig, logger *logrus.Logger) *ImageDo
 				DisableCompression:  false,
 			},
 		},
-		config: cfg,
-		logger: logger,
+		config:    cfg,
+		optimizer: optimizer,
+		logger:    logger,
 	}
 }
 
@@ -93,31 +99,59 @@ func (id *ImageDownloader) DownloadImage(ctx context.Context, imageURL string) (
 		return nil, models.ImageMetadata{}, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	// Validate image dimensions
+	// Original metrics
+	origBounds := img.Bounds()
+	origW, origH := origBounds.Dx(), origBounds.Dy()
+	finalSize := resp.ContentLength
+	resized := false
+	compressed := false
+	jpegQ := 0
+
+	// Optimize image (resize + compression) before detection
+	if id.optimizer != nil {
+		optImg, didResize, didCompress, usedQ, encSize, optErr := id.optimizer.Optimize(img)
+		if optErr == nil {
+			img = optImg
+			resized = didResize
+			compressed = didCompress
+			jpegQ = usedQ
+			if encSize > 0 {
+				finalSize = encSize
+			}
+		} else {
+			id.logger.WithError(optErr).Warn("image optimization failed; proceeding with original image")
+		}
+	}
+
+	// Final dimensions
 	bounds := img.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	
-	if width > id.config.MaxWidth || height > id.config.MaxHeight {
-		return nil, models.ImageMetadata{}, fmt.Errorf("image dimensions too large: %dx%d (max: %dx%d)", 
-			width, height, id.config.MaxWidth, id.config.MaxHeight)
-	}
 
 	// Create metadata
 	metadata := models.ImageMetadata{
-		Width:     width,
-		Height:    height,
-		Format:    strings.ToUpper(format),
-		SizeBytes: resp.ContentLength,
-		URL:       imageURL,
+		Width:             width,
+		Height:            height,
+		Format:            strings.ToUpper(format),
+		SizeBytes:         finalSize,
+		URL:               imageURL,
+		Optimized:         resized || compressed,
+		Resized:           resized,
+		OriginalWidth:     origW,
+		OriginalHeight:    origH,
+		OriginalSizeBytes: resp.ContentLength,
+		JpegQualityUsed:   jpegQ,
 	}
 
 	id.logger.WithFields(logrus.Fields{
-		"url":         imageURL,
-		"width":       width,
-		"height":      height,
-		"format":      format,
-		"size_bytes":  resp.ContentLength,
-	}).Info("Image downloaded successfully")
+		"url":          imageURL,
+		"width":        width,
+		"height":       height,
+		"format":       format,
+		"size_bytes":   finalSize,
+		"resized":      resized,
+		"compressed":   compressed,
+		"jpeg_quality": jpegQ,
+	}).Info("Image downloaded and optimized successfully")
 
 	return img, metadata, nil
 }
@@ -143,8 +177,12 @@ func (id *ImageDownloader) validateURL(imageURL string) error {
 		return fmt.Errorf("missing host in URL")
 	}
 
-	// Basic SSRF protection - block private IP ranges
-	if id.isPrivateIP(parsedURL.Host) {
+	// Security Fix: Enhanced SSRF protection - block private IP ranges
+	isPrivate, err := id.isPrivateIP(parsedURL.Host)
+	if err != nil {
+		return fmt.Errorf("failed to validate host: %w", err)
+	}
+	if isPrivate {
 		return fmt.Errorf("access to private IP ranges is not allowed")
 	}
 
@@ -171,29 +209,46 @@ func (id *ImageDownloader) isValidImageType(contentType string) bool {
 	return false
 }
 
-// isPrivateIP performs basic check for private IP ranges (simplified)
-func (id *ImageDownloader) isPrivateIP(host string) bool {
-	// This is a simplified check - in production, you'd want more comprehensive validation
-	privateHosts := []string{
-		"localhost",
-		"127.0.0.1",
-		"0.0.0.0",
-		"::1",
+// isPrivateIP performs comprehensive check for private IP ranges using Go's net package
+// Security Fix: Proper SSRF protection with IPv4/IPv6 support and DNS resolution
+func (id *ImageDownloader) isPrivateIP(host string) (bool, error) {
+	// First, try to parse as IP address directly
+	if addr, err := netip.ParseAddr(host); err == nil {
+		// Successfully parsed as IP address
+		return id.isPrivateAddr(addr), nil
 	}
 
-	host = strings.ToLower(host)
-	for _, privateHost := range privateHosts {
-		if strings.Contains(host, privateHost) {
-			return true
+	// If not a direct IP, try to resolve hostname to IP addresses
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return false, fmt.Errorf("failed to resolve host %s: %w", host, err)
+	}
+
+	if len(ips) == 0 {
+		return false, fmt.Errorf("no IP addresses found for host: %s", host)
+	}
+
+	// Check all resolved IP addresses - if any are private, block the request
+	for _, ip := range ips {
+		if addr, ok := netip.AddrFromSlice(ip); ok {
+			if id.isPrivateAddr(addr) {
+				id.logger.WithFields(logrus.Fields{
+					"host":        host,
+					"resolved_ip": addr.String(),
+				}).Warn("Blocked request to private IP address")
+				return true, nil
+			}
 		}
 	}
 
-	// Check for private IP prefixes
-	if strings.HasPrefix(host, "10.") ||
-		strings.HasPrefix(host, "192.168.") ||
-		strings.HasPrefix(host, "172.") {
-		return true
-	}
+	return false, nil
+}
 
-	return false
+// isPrivateAddr checks if an IP address is in private ranges
+func (id *ImageDownloader) isPrivateAddr(addr netip.Addr) bool {
+	return addr.IsPrivate() ||
+		addr.IsLoopback() ||
+		addr.IsLinkLocalUnicast() ||
+		addr.IsMulticast() ||
+		addr.IsUnspecified()
 }

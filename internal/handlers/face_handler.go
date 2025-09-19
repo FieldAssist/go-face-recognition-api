@@ -10,6 +10,7 @@ import (
 
 	"face-recognition-api/internal/models"
 	"face-recognition-api/internal/services"
+	"face-recognition-api/internal/validation"
 )
 
 // FaceHandler handles face detection related endpoints
@@ -45,9 +46,9 @@ func (h *FaceHandler) DetectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
-	if req.ImageURL == "" {
-		h.writeErrorResponse(w, http.StatusBadRequest, "MISSING_IMAGE_URL", "Image URL is required", nil)
+	// Validate request using validator
+	if err := validation.ValidateStruct(req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation error: "+err.Error(), err)
 		return
 	}
 
@@ -91,9 +92,9 @@ func (h *FaceHandler) ValidateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate request
-	if req.ImageURL == "" {
-		h.writeErrorResponse(w, http.StatusBadRequest, "MISSING_IMAGE_URL", "Image URL is required", nil)
+	// Validate request using validator
+	if err := validation.ValidateStruct(req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation error: "+err.Error(), err)
 		return
 	}
 
@@ -146,9 +147,9 @@ func (h *FaceHandler) DetectVisualHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Validate request
-	if req.ImageURL == "" {
-		h.writeErrorResponse(w, http.StatusBadRequest, "MISSING_IMAGE_URL", "Image URL is required", nil)
+	// Validate request using validator
+	if err := validation.ValidateStruct(req); err != nil {
+		h.writeErrorResponse(w, http.StatusBadRequest, "VALIDATION_ERROR", "Validation error: "+err.Error(), err)
 		return
 	}
 
