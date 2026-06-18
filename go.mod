@@ -1,6 +1,6 @@
 module face-recognition-api
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/esimov/pigo v1.4.6
@@ -8,7 +8,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/prometheus/client_golang v1.17.0
 	github.com/sirupsen/logrus v1.9.3
-	golang.org/x/image v0.31.0
+	golang.org/x/image v0.38.0
 )
 
 require (
@@ -26,6 +26,6 @@ require (
 	golang.org/x/crypto v0.19.0 // indirect
 	golang.org/x/net v0.21.0 // indirect
 	golang.org/x/sys v0.17.0 // indirect
-	golang.org/x/text v0.29.0 // indirect
+	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 )
