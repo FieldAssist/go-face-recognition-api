@@ -3,8 +3,6 @@ name: Build and Push Docker Image
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
   build:
@@ -25,21 +23,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Lowercase repository name
+        run: |
+          echo "REPO_LOWERCASE=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
       - name: Build and push Docker image
-        id: build  # Add an ID to this step
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile  # Adjust if your Dockerfile has a different name or path
+          file: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:latest
-          labels: ${{ steps.meta.outputs.labels }}
+            ghcr.io/${{ env.REPO_LOWERCASE }}:latest
 
       - name: Generate artifact attestation
         id: attest
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ghcr.io/${{ github.repository }}
-          subject-digest: ${{ steps.build.outputs.digest }}  # Reference the digest output
+          subject-name: ghcr.io/${{ env.REPO_LOWERCASE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
